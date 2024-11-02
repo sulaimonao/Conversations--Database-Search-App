@@ -1,0 +1,42 @@
+<!-- message_detail.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Message Details</h2>
+<div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 20px;">
+    <p><strong>Message ID:</strong> {{ message.message_id }}</p>
+    <p><strong>Author:</strong> {{ message.author_role }}</p>
+    <p><strong>Timestamp:</strong> {{ message.timestamp }}</p>
+    <p><strong>Content:</strong></p>
+    <pre>{{ message.content }}</pre>
+</div>
+
+<h3>Feedback</h3>
+{% if feedback %}
+    {% for fb in feedback %}
+    <div class="feedback">
+        <p><strong>Feedback ID:</strong> {{ fb.feedback_id }}</p>
+        <p><strong>Type:</strong> {{ fb.feedback_type }}</p>
+        <p><strong>Content:</strong> {{ fb.feedback_content }}</p>
+    </div>
+    {% endfor %}
+{% else %}
+    <p>No feedback available for this message.</p>
+{% endif %}
+
+<h3>Model Comparisons</h3>
+{% if model_comparisons %}
+    {% for comp in model_comparisons %}
+    <div class="model-comparison">
+        <p><strong>Comparison ID:</strong> {{ comp.comparison_id }}</p>
+        <p><strong>Model Name:</strong> {{ comp.model_name }}</p>
+        <p><strong>Response Time:</strong> {{ comp.response_time }}</p>
+        <p><strong>Data:</strong> {{ comp.comparison_data }}</p>
+    </div>
+    {% endfor %}
+{% else %}
+    <p>No model comparison data available for this message.</p>
+{% endif %}
+
+<a href="{{ url_for('main.conversation', conversation_id=message.conversation_id) }}">Back to Conversation</a>
+{% endblock %}

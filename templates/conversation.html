@@ -1,0 +1,72 @@
+<!-- conversation.html -->
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>{{ title }}</h2>
+    <p><strong>Created:</strong> {{ create_time }}</p>
+    <p><strong>Last Updated:</strong> {{ update_time }}</p>
+
+    <h3>Messages</h3>
+    {% if messages %}
+        {% for message in messages %}
+            <div style="border: 1px solid #ccc; padding: 10px; margin-left: {{ message.get('level', 0) * 20 }}px; margin-bottom: 20px;">
+                <p><strong>Author:</strong> {{ message.author_role }}</p>
+                <p><strong>Timestamp:</strong> {{ message.timestamp }}</p>
+                
+                {% if message.is_discarded %}
+                    <p><em>This message has been discarded or deleted.</em></p>
+                {% else %}
+                    <pre>{{ message.content or 'No content' }}</pre>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No messages available in this conversation.</p>
+    {% endif %}
+    
+
+    <h3>Feedback</h3>
+    {% if feedback %}
+        {% for fb in feedback %}
+        <div class="feedback">
+            <p><strong>Feedback ID:</strong> {{ fb.feedback_id }}</p>
+            <p><strong>Type:</strong> {{ fb.feedback_type }}</p>
+            <p><strong>Content:</strong> {{ fb.feedback_content }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No feedback available.</p>
+    {% endif %}
+
+    <h3>Model Comparisons</h3>
+    {% if model_comparisons %}
+        {% for comp in model_comparisons %}
+        <div class="model-comparison">
+            <p><strong>Comparison ID:</strong> {{ comp.comparison_id }}</p>
+            <p><strong>Model Name:</strong> {{ comp.model_name }}</p>
+            <p><strong>Data:</strong> {{ comp.comparison_data }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No model comparison data available.</p>
+    {% endif %}
+
+    <h3>Shared Conversations</h3>
+    {% if shared_conversations %}
+        {% for shared in shared_conversations %}
+        <div class="shared-conversation">
+            <p><strong>Shared Conversation ID:</strong> {{ shared.shared_conversation_id }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No shared conversation data available.</p>
+    {% endif %}
+
+<form action="{{ url_for('main.export_conversation_json', conversation_id=conversation_id) }}" method="post">
+    <button type="submit">Export as JSON</button>
+</form>
+
+<form action="{{ url_for('main.export_conversation_html', conversation_id=conversation_id) }}" method="post">
+    <button type="submit">Export as HTML</button>
+</form>
+{% endblock %}

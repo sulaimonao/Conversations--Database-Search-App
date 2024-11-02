@@ -1,0 +1,36 @@
+<!-- base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Conversations Database Viewer{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Header with title and search bar -->
+    <header>
+        <h1>Conversations Database Viewer</h1>
+        <!-- Search form -->
+        <form action="{{ url_for('main.index') }}" method="get">
+            <input type="text" name="query" placeholder="Search for 'code query'" value="{{ query }}">
+            <label for="start_date">From:</label>
+            <input type="date" name="start_date" value="{{ start_date }}">
+            <label for="end_date">To:</label>
+            <input type="date" name="end_date" value="{{ end_date }}">
+            <button type="submit">Search</button>
+        </form>
+    </header>
+    <!-- Main content area -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Debugging values -->
+    <div>
+        <p>Query: {{ query }}</p>
+        <p>From Date: {{ start_date }}</p>
+        <p>To Date: {{ end_date }}</p>
+    </div>
+
+</body>
+</html>

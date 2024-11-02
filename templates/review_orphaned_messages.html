@@ -1,0 +1,29 @@
+<!-- templates/review_orphaned_messages.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Review Orphaned Messages</title>
+</head>
+<body>
+    <h1>Review Orphaned Messages</h1>
+    <table>
+        <tr>
+            <th>Message ID</th>
+            <th>Suggested Conversation ID</th>
+            <th>Conversation Title</th>
+            <th>Timestamp</th>
+            <th>User ID</th>
+        </tr>
+        {% for match in matched_messages %}
+        <tr>
+            <td>{{ match.message_id }}</td>
+            <td>{{ match.potential_conversation_id }}</td>
+            <td>{{ match.conversation_title }}</td>
+            <td>{{ match.timestamp }}</td>
+            <td>{{ match.user_id }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
