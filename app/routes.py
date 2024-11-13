@@ -14,7 +14,6 @@ main = Blueprint('main', __name__)
 
 @main.route('/')
 def index():
-    # Retrieve query parameters for search, date range, pagination, sorting
     query = request.args.get('query', '')
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
@@ -22,78 +21,83 @@ def index():
     per_page = 20
     offset = (page - 1) * per_page
 
-    # Database connection
     with closing(get_db_connection()) as conn:
+        # Base queries
         sql_query = "SELECT * FROM Conversations WHERE 1=1"
-        params = []
+        count_query = "SELECT COUNT(*) FROM Conversations WHERE 1=1"
+        sql_params = []
+        count_params = []
 
-        # Apply search and date filters
+        # Conditionally add filters and parameters
         if query:
             sql_query += " AND conversation_data LIKE ?"
-            params.append(f'%{query}%')
+            count_query += " AND conversation_data LIKE ?"
+            sql_params.append(f'%{query}%')
+            count_params.append(f'%{query}%')
         if start_date:
             sql_query += " AND datetime(timestamp, 'unixepoch') >= ?"
-            params.append(start_date)
+            count_query += " AND datetime(timestamp, 'unixepoch') >= ?"
+            sql_params.append(start_date)
+            count_params.append(start_date)
         if end_date:
             sql_query += " AND datetime(timestamp, 'unixepoch') <= ?"
-            params.append(end_date)
+            count_query += " AND datetime(timestamp, 'unixepoch') <= ?"
+            sql_params.append(end_date)
+            count_params.append(end_date)
 
-        # Calculate total number of matching records (for total pages)
-        count_query = "SELECT COUNT(*) FROM Conversations WHERE 1=1"
-        count_params = params.copy()
-        total_records = conn.execute(count_query, count_params).fetchone()[0]
+        # Execute count query based on count_params presence
+        if count_params:
+            print("Executing count_query with params:", count_query, count_params)  # Debugging line
+            total_records = conn.execute(count_query, count_params).fetchone()[0]
+        else:
+            print("Executing count_query without params:", count_query)  # Debugging line
+            total_records = conn.execute(count_query).fetchone()[0]
         total_pages = math.ceil(total_records / per_page)
 
-        # Fetch conversations without SQL sorting
+        # Fetch paginated results
         sql_query += " LIMIT ? OFFSET ?"
-        params.extend([per_page, offset])
-        conversations = conn.execute(sql_query, params).fetchall()
+        sql_params.extend([per_page, offset])
+        print("Executing sql_query with params:", sql_query, sql_params)  # Debugging line
+        conversations = conn.execute(sql_query, sql_params).fetchall()
 
-        # Process and parse JSON data for sorting in Python
+        # Process and prepare data for rendering
         results = []
         for conversation in conversations:
+            # Extract basic fields
             conversation_id = conversation['conversation_id']
             user_id = conversation['user_id']
             timestamp = format_timestamp(conversation['timestamp'])
+            
+            # Parse JSON data from conversation_data field
             parsed_data = parse_conversation_data(conversation['conversation_data'])
 
-            # Extract create_time and update_time from parsed_data if available
+            # Extract specific fields from parsed data
             create_time = parsed_data.get("create_time")
             update_time = parsed_data.get("update_time")
+            title = parsed_data.get("title", "No Title")
 
-            # Extract and summarize unique roles, limit to 5 for brevity
-            unique_roles = list(set(msg.get("author_role") for msg in parsed_data["messages"]))
+            # Extract and summarize unique author roles, limited to 5
+            unique_roles = list(set(msg.get("author_role") for msg in parsed_data.get("messages", [])))
             summarized_roles = ", ".join(unique_roles[:5]) + ("..." if len(unique_roles) > 5 else "")
 
+            # Add structured data to results
             results.append({
                 "conversation_id": conversation_id,
                 "user_id": user_id,
                 "timestamp": timestamp,
-                "title": parsed_data["title"],
+                "title": title,
                 "create_time": create_time,
                 "update_time": update_time,
-                "mapping_ids": summarized_roles  # Summarized unique roles
+                "mapping_ids": summarized_roles  # Display summarized roles
             })
 
-        # Sort results in Python
-        sort_by = request.args.get('sort_by', 'timestamp')
-        order = request.args.get('order', 'DESC')
-        reverse_order = (order == 'DESC')
-        valid_sort_fields = ['timestamp', 'create_time', 'update_time']
-
-        # Sort only if valid field
-        if sort_by in valid_sort_fields:
-            results.sort(key=lambda x: x.get(sort_by) or '', reverse=reverse_order)
-
-    # Pass the sort field, order, and pagination details to the template
+    # Render the template with conversation data
     return render_template(
         'index.html',
         conversations=results,
         page=page,
         per_page=per_page,
         total_pages=total_pages,
-        sort_by=sort_by,
-        order=order,
         query=query,
         start_date=start_date,
         end_date=end_date

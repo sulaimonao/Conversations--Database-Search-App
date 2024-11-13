@@ -1,3 +1,5 @@
 .DS_Store
 .env
 GPT_conversations_database.db
+scan_git_repo.py
+project_overview.json
