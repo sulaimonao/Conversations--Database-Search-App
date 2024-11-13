@@ -48,7 +48,7 @@ The project is organized into the following main folders and files:
 │   ├── conversation.html
 ├── data/
 │   └── search_history.json       # JSON file to log search history
-├── database.db # SQLite database file
+├── GPT_conversations_database.db # SQLite database file
 ├── requirements.txt              # Python dependencies
 └── run.py                        # Script to run the Flask application
 ```
@@ -68,7 +68,7 @@ The project is organized into the following main folders and files:
    ```
 
 3. **Database Setup**  
-   Ensure that the `database.db` file is present in the project root. This SQLite database stores the conversation records.
+   Ensure that the `GPT_conversations_database.db` file is present in the project root. This SQLite database stores the conversation records.
 
 ## Usage
 
@@ -126,7 +126,7 @@ Utility scripts for database maintenance and debugging:
 
 ## Data Schema
 
-The SQLite database, `database.db`, includes the following key tables:
+The SQLite database, `GPT_conversations_database.db`, includes the following key tables:
 
 - **`Conversations`**: Stores conversation records with fields like `conversation_id`, `user_id`, `conversation_data`, and `timestamp`.
 - **`Messages`**: Stores messages linked to conversations with details such as `message_id`, `content`, `author_role`, and `timestamp`.
@@ -144,6 +144,6 @@ All dependencies are listed in `requirements.txt`.
 
 ## Troubleshooting
 
-1. **Database Connection Issues**: If the app cannot connect to the database, ensure `database.db` is present in the project root.
+1. **Database Connection Issues**: If the app cannot connect to the database, ensure `GPT_conversations_database.db` is present in the project root.
 2. **Timestamp Errors**: Use `debug_scripts/timestamp_fix.py` to update missing timestamps in the `Conversations` table.
 3. **Orphaned Messages**: Run `debug_scripts/link_orphan_db.py` to link messages without conversation IDs to potential conversations.
