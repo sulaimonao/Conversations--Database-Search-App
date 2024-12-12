@@ -1,69 +1,56 @@
 # app/parsers.py
+
 import json
+import sqlite3
 from .utils import format_timestamp
+from .helpers import fetch_feedback, fetch_model_comparisons
 
-def parse_conversation_data(conversation_data):
-    def extract_messages(mapping, messages, level=0):
-        if not mapping:
-            return
-
-        message_info = mapping.get("message")
-        if message_info and isinstance(message_info, dict):
-            author_role = message_info.get("author", {}).get("role", "unknown")
-            content_parts = message_info.get("content", {}).get("parts", [])
-            
-            # Ensure content_parts contains only strings before joining
-            content = "\n".join(str(part) for part in content_parts if isinstance(part, str)) or "Content unavailable"
-            timestamp_raw = message_info.get("create_time")
-            timestamp = format_timestamp(timestamp_raw)
-            
-            messages.append({
-                "message_id": message_info.get("id"),
-                "author_role": author_role,
-                "content": content,
-                "timestamp": timestamp,
-                "timestamp_raw": timestamp_raw,
-                "level": level  # Set level for indentation
-            })
-
-        children_ids = mapping.get("children", [])
-        for child_id in children_ids:
-            child_mapping = mappings.get(child_id)
-            if child_mapping:
-                extract_messages(child_mapping, messages, level + 1)
-
+def parse_conversation_data(conversation_row, conn):
     try:
-        data = json.loads(conversation_data)
-        title = data.get("title", "No Title")
-        create_time = format_timestamp(data.get("create_time"))
-        update_time = format_timestamp(data.get("update_time"))
-        mappings = data.get("mapping", {})
-        messages = []
-        special_id = data.get("special_id", "N/A")  # Assume 'special_id' is the correct key
+        # Validate input
+        if not isinstance(conversation_row, sqlite3.Row):
+            raise TypeError(f"Expected sqlite3.Row, got {type(conversation_row)}")
 
-        for key, mapping in mappings.items():
-            extract_messages(mapping, messages)
+        # Extract fields
+        conversation_id = conversation_row["conversation_id"]
+        title = conversation_row["title"] or "No Title"
+        create_time = format_timestamp(conversation_row["create_time"])
+        update_time = format_timestamp(conversation_row["update_time"])
 
-        messages.sort(key=lambda x: x['timestamp_raw'] or 0)
-        mapping_ids_str = ", ".join(str(msg.get("author_role", "")) for msg in messages)
+        print(f"Parsing messages for conversation_id: {conversation_id}")
+        # Fetch messages
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM Messages WHERE conversation_id = ? ORDER BY create_time ASC",
+            (conversation_id,)
+        )
+        message_rows = cursor.fetchall()
+
+        messages = [
+            {
+                "message_id": msg["message_id"],
+                "author_role": msg["author_role"] or "unknown",
+                "content": msg["content"] or "No content available",
+                "timestamp": format_timestamp(msg["create_time"]),
+                "status": msg["status"],
+            }
+            for msg in message_rows
+        ]
 
         return {
+            "conversation_id": conversation_id,
             "title": title,
             "create_time": create_time,
             "update_time": update_time,
-            "mapping_ids": mapping_ids_str,
-            "special_id": special_id, 
-            "messages": messages
+            "messages": messages,
         }
 
-    except (json.JSONDecodeError, TypeError) as e:
+    except Exception as e:
         print(f"Error parsing conversation data: {e}")
         return {
-            "title": "No Title",
+            "conversation_id": "unknown",
+            "title": "Error",
             "create_time": "N/A",
             "update_time": "N/A",
-            "mapping_ids": "No mappings",
-            "mapping_ids": "No mappings",
-            "special_id": "N/A",
-            "messages": []
+            "messages": [],
         }

@@ -1,99 +1,83 @@
+# debug_scripts/link_orphan_db.py
+
 import sqlite3
 import difflib
 
 # Connect to the database
-conn = sqlite3.connect('database.db')
+conn = sqlite3.connect('GPT_conversations_database.db')
 conn.row_factory = sqlite3.Row
+cursor = conn.cursor()
 
 def link_orphaned_messages():
-    # Step 1: Identify orphaned messages (without conversation_id)
-    orphaned_messages = conn.execute("""
-        SELECT message_id, content, timestamp 
-        FROM Messages 
-        WHERE conversation_id IS NULL
-    """).fetchall()
+    # Identify orphaned messages
+    orphaned_messages = cursor.execute(
+        "SELECT message_id, content, create_time FROM Messages WHERE conversation_id IS NULL"
+    ).fetchall()
 
-    # Logging for updates
     link_log = []
 
     for message in orphaned_messages:
-        # Step 2: Match based on timestamp proximity
-        matched_conversation = conn.execute("""
+        message_id = message["message_id"]
+        content = message["content"]
+        create_time = message["create_time"]
+
+        # Match by timestamp
+        matched_conversation = cursor.execute(
+            """
             SELECT conversation_id 
             FROM Conversations 
-            WHERE ABS(Conversations.timestamp - ?) < 600
-            ORDER BY ABS(Conversations.timestamp - ?) ASC
+            WHERE ABS(Conversations.create_time - ?) < 600
+            ORDER BY ABS(Conversations.create_time - ?) ASC
             LIMIT 1
-        """, (message['timestamp'], message['timestamp'])).fetchone()
-        
+            """,
+            (create_time, create_time)
+        ).fetchone()
+
         if matched_conversation:
-            # Update message with found conversation_id
-            conn.execute("""
-                UPDATE Messages 
-                SET conversation_id = ? 
-                WHERE message_id = ?
-            """, (matched_conversation['conversation_id'], message['message_id']))
-            link_log.append(f"Linked Message ID {message['message_id']} to Conversation ID {matched_conversation['conversation_id']}")
-        
+            # Update message with matched conversation_id
+            cursor.execute(
+                "UPDATE Messages SET conversation_id = ? WHERE message_id = ?",
+                (matched_conversation["conversation_id"], message_id)
+            )
+            link_log.append(f"Linked Message ID {message_id} to Conversation ID {matched_conversation['conversation_id']}")
         else:
-            # Step 3: Content-based matching (if no timestamp match found)
-            potential_matches = conn.execute("""
-                SELECT conversation_id, conversation_data 
-                FROM Conversations
-            """).fetchall()
+            # Fallback: Match by content similarity
+            potential_matches = cursor.execute("SELECT conversation_id, title FROM Conversations").fetchall()
 
-            highest_similarity = 0
             best_match_id = None
-            
-            # Find best content match
-            for conversation in potential_matches:
-                conversation_text = conversation['conversation_data']
-                similarity_ratio = difflib.SequenceMatcher(None, message['content'], conversation_text).ratio()
-                
-                if similarity_ratio > highest_similarity:
-                    highest_similarity = similarity_ratio
-                    best_match_id = conversation['conversation_id']
+            highest_similarity = 0
 
-            # If content similarity is high enough, link the message
-            if highest_similarity > 0.6:  # Set a threshold for linking, e.g., 60% similarity
-                conn.execute("""
-                    UPDATE Messages 
-                    SET conversation_id = ? 
-                    WHERE message_id = ?
-                """, (best_match_id, message['message_id']))
-                link_log.append(f"Content-linked Message ID {message['message_id']} to Conversation ID {best_match_id} with {highest_similarity:.2f} similarity.")
+            for conversation in potential_matches:
+                similarity = difflib.SequenceMatcher(None, content, conversation["title"]).ratio()
+                if similarity > highest_similarity:
+                    highest_similarity = similarity
+                    best_match_id = conversation["conversation_id"]
+
+            if highest_similarity > 0.6:  # Threshold for similarity
+                cursor.execute(
+                    "UPDATE Messages SET conversation_id = ? WHERE message_id = ?",
+                    (best_match_id, message_id)
+                )
+                link_log.append(f"Content-linked Message ID {message_id} to Conversation ID {best_match_id} with similarity {highest_similarity:.2f}")
 
     # Commit changes
     conn.commit()
 
-    # Display or log results
-    for log_entry in link_log:
-        print(log_entry)
+    # Display results
+    for log in link_log:
+        print(log)
 
-# Run the orphaned message linker
+# Run the script
 link_orphaned_messages()
 
-remaining_orphans = conn.execute("""
-    SELECT message_id 
-    FROM Messages 
-    WHERE conversation_id IS NULL
-""").fetchall()
+# Verify remaining orphans
+remaining_orphans = cursor.execute(
+    "SELECT message_id FROM Messages WHERE conversation_id IS NULL"
+).fetchall()
 
 if remaining_orphans:
-    print("Remaining orphaned messages found:", remaining_orphans)
+    print("Remaining orphaned messages:", [row["message_id"] for row in remaining_orphans])
 else:
     print("All orphaned messages have been successfully linked.")
 
-linked_messages = conn.execute("""
-    SELECT message_id, conversation_id, timestamp, content 
-    FROM Messages 
-    WHERE conversation_id IS NOT NULL
-    ORDER BY conversation_id, timestamp
-""").fetchall()
-
-print("Successfully Linked Messages:")
-for msg in linked_messages:
-    print(f"Message ID: {msg['message_id']}, Conversation ID: {msg['conversation_id']}, Timestamp: {msg['timestamp']}")
-
-# Close the connection after use
 conn.close()

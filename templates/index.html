@@ -1,7 +1,9 @@
-<!-- index.html -->
+<!-- templates/index.html -->
 {% extends "base.html" %}
+
 {% block content %}
     <h2>Conversations</h2>
+
     <table>
         <thead>
             <tr>
@@ -9,9 +11,8 @@
                 <th>Title</th>
                 <th>Create Time</th>
                 <th>Update Time</th>
-                <th>Special IDs</th> <!-- Updated to display Special ID -->
+                <th>Special IDs</th>
                 <th>View Details</th>
-                <th>Timestamp</th>
             </tr>
         </thead>
         <tbody>
@@ -21,48 +22,24 @@
                 <td>{{ conversation.title }}</td>
                 <td>{{ conversation.create_time }}</td>
                 <td>{{ conversation.update_time }}</td>
-                <td>{{ conversation.mapping_ids }}</td> <!-- Display summarized Special IDs here -->
+                <td>{{ conversation.mapping_ids }}</td>
                 <td>
                     <a href="{{ url_for('main.conversation', conversation_id=conversation.conversation_id) }}">
                         View Conversation
                     </a>
                 </td>
-                <td>{{ conversation.timestamp }}</td>
             </tr>
             {% endfor %}
         </tbody>
-        
     </table>
 
-    {% if recent_searches %}
-    <div class="recent-searches">
-        <h3>Recent Searches</h3>
-        <ul>
-            {% for search in recent_searches %}
-            <li>
-                <strong>Query:</strong> {{ search.query }} | 
-                <strong>Start Date:</strong> {{ search.start_date }} | 
-                <strong>End Date:</strong> {{ search.end_date }} | 
-                <strong>Time:</strong> {{ search.timestamp }}
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-
-    <!-- Add pagination controls with persistent sorting -->
     <div class="pagination">
         {% if page > 1 %}
-        <a href="?page={{ page - 1 }}&sort_by={{ sort_by }}&order={{ order }}&query={{ query }}&start_date={{ start_date }}&end_date={{ end_date }}">
-            Previous
-        </a>
+        <a href="?page={{ page - 1 }}&query={{ query }}&start_date={{ start_date }}&end_date={{ end_date }}">Previous</a>
         {% endif %}
         <span>Page {{ page }} of {{ total_pages }}</span>
         {% if conversations|length == per_page and page < total_pages %}
-        <a href="?page={{ page + 1 }}&sort_by={{ sort_by }}&order={{ order }}&query={{ query }}&start_date={{ start_date }}&end_date={{ end_date }}">
-            Next
-        </a>
+        <a href="?page={{ page + 1 }}&query={{ query }}&start_date={{ start_date }}&end_date={{ end_date }}">Next</a>
         {% endif %}
     </div>
-
 {% endblock %}

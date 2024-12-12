@@ -1,10 +1,10 @@
 # app/routes.py
-from flask import Blueprint, render_template, request, make_response
+
+from flask import Blueprint, render_template, request, make_response, jsonify
 from .db import get_db_connection
 from .utils import format_timestamp, log_search, get_recent_searches
 from .parsers import parse_conversation_data
 from .helpers import fetch_feedback, fetch_model_comparisons
-import json
 from datetime import datetime
 import math
 import logging
@@ -22,76 +22,51 @@ def index():
     offset = (page - 1) * per_page
 
     with closing(get_db_connection()) as conn:
-        # Base queries
+        # Base SQL query
         sql_query = "SELECT * FROM Conversations WHERE 1=1"
         count_query = "SELECT COUNT(*) FROM Conversations WHERE 1=1"
-        sql_params = []
-        count_params = []
+        sql_params, count_params = [], []
 
-        # Conditionally add filters and parameters
+        # Apply filters
         if query:
-            sql_query += " AND conversation_data LIKE ?"
-            count_query += " AND conversation_data LIKE ?"
-            sql_params.append(f'%{query}%')
-            count_params.append(f'%{query}%')
+            sql_query += " AND title LIKE ?"
+            count_query += " AND title LIKE ?"
+            sql_params.append(f"%{query}%")
+            count_params.append(f"%{query}%")
         if start_date:
-            sql_query += " AND datetime(timestamp, 'unixepoch') >= ?"
-            count_query += " AND datetime(timestamp, 'unixepoch') >= ?"
+            sql_query += " AND datetime(create_time, 'unixepoch') >= ?"
+            count_query += " AND datetime(create_time, 'unixepoch') >= ?"
             sql_params.append(start_date)
             count_params.append(start_date)
         if end_date:
-            sql_query += " AND datetime(timestamp, 'unixepoch') <= ?"
-            count_query += " AND datetime(timestamp, 'unixepoch') <= ?"
+            sql_query += " AND datetime(create_time, 'unixepoch') <= ?"
+            count_query += " AND datetime(create_time, 'unixepoch') <= ?"
             sql_params.append(end_date)
             count_params.append(end_date)
 
-        # Execute count query based on count_params presence
-        if count_params:
-            print("Executing count_query with params:", count_query, count_params)  # Debugging line
-            total_records = conn.execute(count_query, count_params).fetchone()[0]
-        else:
-            print("Executing count_query without params:", count_query)  # Debugging line
-            total_records = conn.execute(count_query).fetchone()[0]
+        # Fetch total count for pagination
+        total_records = conn.execute(count_query, count_params).fetchone()[0]
         total_pages = math.ceil(total_records / per_page)
 
         # Fetch paginated results
         sql_query += " LIMIT ? OFFSET ?"
         sql_params.extend([per_page, offset])
-        print("Executing sql_query with params:", sql_query, sql_params)  # Debugging line
         conversations = conn.execute(sql_query, sql_params).fetchall()
 
-        # Process and prepare data for rendering
+        # Process data for rendering
         results = []
         for conversation in conversations:
-            # Extract basic fields
-            conversation_id = conversation['conversation_id']
-            user_id = conversation['user_id']
-            timestamp = format_timestamp(conversation['timestamp'])
-            
-            # Parse JSON data from conversation_data field
-            parsed_data = parse_conversation_data(conversation['conversation_data'])
-
-            # Extract specific fields from parsed data
-            create_time = parsed_data.get("create_time")
-            update_time = parsed_data.get("update_time")
-            title = parsed_data.get("title", "No Title")
-
-            # Extract and summarize unique author roles, limited to 5
-            unique_roles = list(set(msg.get("author_role") for msg in parsed_data.get("messages", [])))
-            summarized_roles = ", ".join(unique_roles[:5]) + ("..." if len(unique_roles) > 5 else "")
-
-            # Add structured data to results
+            print(f"Processing conversation row: {conversation}")
+            print(f"Fetched conversations: {conversations}")
+            parsed_data = parse_conversation_data(conversation, conn)  # Pass entire row
             results.append({
-                "conversation_id": conversation_id,
-                "user_id": user_id,
-                "timestamp": timestamp,
-                "title": title,
-                "create_time": create_time,
-                "update_time": update_time,
-                "mapping_ids": summarized_roles  # Display summarized roles
+                "conversation_id": parsed_data["conversation_id"],
+                "title": parsed_data["title"],
+                "create_time": parsed_data["create_time"],
+                "update_time": parsed_data["update_time"],
+                "messages": parsed_data["messages"],
             })
 
-    # Render the template with conversation data
     return render_template(
         'index.html',
         conversations=results,
@@ -101,6 +76,32 @@ def index():
         query=query,
         start_date=start_date,
         end_date=end_date
+    )
+
+@main.route('/conversation/<conversation_id>')
+def conversation(conversation_id):
+    with closing(get_db_connection()) as conn:
+        # Fetch conversation details
+        cursor = conn.cursor()
+        print(f"Fetching conversation with ID: {conversation_id}")
+        cursor.execute("SELECT * FROM Conversations WHERE conversation_id = ?", (conversation_id,))
+        conversation_row = cursor.fetchone()
+        print(f"Fetched conversation row: {conversation_row}")
+
+        if not conversation_row:
+            print(f"Conversation ID {conversation_id} not found.")
+            return "Conversation not found", 404
+
+        # Parse conversation data
+        parsed_data = parse_conversation_data(conversation_row, conn)
+        print(f"Parsed conversation data: {parsed_data}")
+
+    return render_template(
+        'conversation.html',
+        title=parsed_data["title"],
+        create_time=parsed_data["create_time"],
+        update_time=parsed_data["update_time"],
+        messages=parsed_data["messages"]
     )
 
 @main.route('/review_orphaned_messages')
@@ -159,57 +160,6 @@ def link_orphaned_messages():
         conn.commit()
     return "Orphaned messages have been linked to conversations.", 200
 
-@main.route('/conversation/<conversation_id>')
-def conversation(conversation_id):
-    with closing(get_db_connection()) as conn:
-        # Retrieve conversation details from `Conversations` table
-        conversation = conn.execute(
-            "SELECT * FROM Conversations WHERE conversation_id = ?", (conversation_id,)
-        ).fetchone()
-        
-        if not conversation:
-            return "Conversation not found", 404
-
-        # Parse the conversation_data JSON field
-        parsed_data = parse_conversation_data(conversation['conversation_data'])
-
-        # Retrieve associated messages from `Messages` table
-        messages = conn.execute(
-            "SELECT * FROM Messages WHERE conversation_id = ?", (conversation_id,)
-        ).fetchall()
-
-        # Retrieve feedback related to messages from `Feedback` table
-        message_ids = [msg['message_id'] for msg in messages]
-        feedback_data = conn.execute(
-            "SELECT * FROM Feedback WHERE message_id IN ({})".format(
-                ",".join("?" for _ in message_ids)), message_ids
-        ).fetchall()
-
-        # Retrieve model comparisons related to messages from `ModelComparisons` table
-        model_comparisons = conn.execute(
-            "SELECT * FROM ModelComparisons WHERE message_id IN ({})".format(
-                ",".join("?" for _ in message_ids)), message_ids
-        ).fetchall()
-
-        # Retrieve associated shared conversations from `SharedConversations` table
-        shared_conversations = conn.execute(
-            "SELECT * FROM SharedConversations WHERE conversation_id = ?", (conversation_id,)
-        ).fetchall()
-
-    # Pass all retrieved data to the template
-    return render_template(
-        'conversation.html',
-        title=parsed_data["title"],
-        create_time=parsed_data["create_time"],
-        update_time=parsed_data["update_time"],
-        messages=parsed_data["messages"],  # Use parsed messages from `conversation_data`
-        raw_messages=messages,  # Raw messages directly from the `Messages` table
-        feedback=feedback_data,
-        model_comparisons=model_comparisons,
-        shared_conversations=shared_conversations,
-        conversation_id=conversation_id
-    )
-
 @main.route('/conversation/<conversation_id>/export/json', methods=['POST'])
 def export_conversation_json(conversation_id):
     conn = get_db_connection()
@@ -223,6 +173,8 @@ def export_conversation_json(conversation_id):
         create_time = parsed_data.get("create_time", "N/A")
         update_time = parsed_data.get("update_time", "N/A")
         messages = parsed_data.get("messages", [])
+        print(f"Type of conversation_row: {type(conversation_row)}, Value: {conversation_row}")
+
 
         # Structure JSON for full export
         conversation_json = {
@@ -302,22 +254,86 @@ def message_detail(message_id):
         feedback=feedback,
         model_comparisons=model_comparisons
     )
-@main.route('/search', methods=['POST'])
-def search_conversations():
+
+@main.route('/search', methods=['GET'])
+def search():
     """
-    Handles search requests for conversations based on query parameters.
-
-    Retrieves conversations from the database based on the provided query, start date, and end date.
-    Logs the search query using the `log_search` function.
-    Redirects to the main index page with the search parameters included in the URL.
+    Enhanced search endpoint to include results from Conversations and Messages tables.
     """
-    query = request.form.get('query', '')
-    start_date = request.form.get('start_date', '')
-    end_date = request.form.get('end_date', '')
+    query = request.args.get('query', '')
+    if not query:
+        return jsonify({"error": "Query parameter is required"}), 400
 
-    log_search(query, start_date, end_date)  # Log the search query
+    context_range = 2  # Number of messages for context
 
-    return redirect(url_for('main.index', query=query, start_date=start_date, end_date=end_date))
+    with closing(get_db_connection()) as conn:
+        # Search in the Conversations table
+        conversation_query = """
+            SELECT conversation_id, conversation_data
+            FROM Conversations
+            WHERE conversation_data LIKE ?
+        """
+        conversation_matches = conn.execute(conversation_query, (f'%{query}%',)).fetchall()
+
+        # Search in the Messages table
+        message_query = """
+            SELECT message_id, conversation_id, content, timestamp
+            FROM Messages
+            WHERE content LIKE ?
+        """
+        message_matches = conn.execute(message_query, (f'%{query}%',)).fetchall()
+
+        results = []
+
+        # Process Conversation matches
+        for match in conversation_matches:
+            conversation_id = match['conversation_id']
+            conversation_data = json.loads(match['conversation_data'])
+            results.append({
+                "type": "conversation",
+                "conversation_id": conversation_id,
+                "title": conversation_data.get("title", "No Title"),
+                "content_snippet": query,
+                "timestamp": format_timestamp(conversation_data.get("create_time")),
+            })
+
+        # Process Message matches with context
+        for match in message_matches:
+            conversation_id = match['conversation_id']
+            message_id = match['message_id']
+
+            # Fetch context messages
+            context_query = """
+                SELECT * FROM Messages
+                WHERE conversation_id = ?
+                AND create_time BETWEEN ? AND ?
+            """
+            context_messages = conn.execute(context_query, (
+                conversation_id,
+                int(message_id) - context_range,
+                int(message_id) + context_range
+            )).fetchall()
+
+            results.append({
+                "type": "message",
+                "match": {
+                    "message_id": message_id,
+                    "conversation_id": conversation_id,
+                    "content": match['content'],
+                    "timestamp": format_timestamp(match['timestamp']),
+                    "author_role": match['author_role']
+                },
+                "context": [
+                    {
+                        "message_id": msg['message_id'],
+                        "content": msg['content'],
+                        "timestamp": format_timestamp(msg['timestamp']),
+                        "author_role": msg['author_role']
+                    } for msg in context_messages
+                ]
+            })
+
+        return jsonify(results)
 
 @main.route('/recent_searches')
 def recent_searches():

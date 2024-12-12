@@ -39,3 +39,27 @@ th, td {
     border: 1px solid #ddd;
     text-align: left;
 }
+
+/* styles.css */
+
+#search-form {
+    margin-bottom: 1em;
+    display: flex;
+    gap: 10px;
+}
+
+#search-query {
+    flex: 1;
+    padding: 0.5em;
+    font-size: 1em;
+}
+
+#search-results {
+    margin-top: 1em;
+}
+
+.search-result {
+    border: 1px solid #ddd;
+    padding: 1em;
+    margin-bottom: 1em;
+}
